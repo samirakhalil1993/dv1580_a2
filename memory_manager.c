@@ -3,6 +3,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
+
+pthread_mutex_t memory_mutex;
 
 // Structure to represent a memory block in the pool
 typedef struct Block {
@@ -22,6 +25,7 @@ size_t memory_pool_size = 0;
 // Errors:
 // - Prints an error message and exits if memory allocation fails.
 void mem_init(size_t size) {
+    pthread_mutex_init(&memory_mutex, NULL);
     memory_pool = malloc(size);
     if (!memory_pool) {
         perror("Memory pool allocation failed");
@@ -50,20 +54,19 @@ void mem_init(size_t size) {
 // Returns:
 // - A pointer to the allocated memory if successful, or NULL if no suitable block is found.
 void* mem_alloc(size_t size) {
+    pthread_mutex_lock(&memory_mutex); // Acquire lock
+
     Block* current = head_block;
 
-    // Find the first free block that is large enough
     while (current != NULL) {
         if (current->is_free && current->size >= size) {
-            // If the block is larger than needed, split it
             if (current->size > size) {
-                // Create a new metadata block for the remaining free memory
                 Block* new_block = (Block*)malloc(sizeof(Block));
                 if (!new_block) {
                     perror("New block metadata allocation failed");
+                    pthread_mutex_unlock(&memory_mutex); // Release lock on failure
                     return NULL;
                 }
-
                 new_block->size = current->size - size;
                 new_block->is_free = 1;
                 new_block->ptr = (char*)current->ptr + size;
@@ -75,17 +78,16 @@ void* mem_alloc(size_t size) {
             } else {
                 current->is_free = 0;
             }
-
-            // Return the pointer to the allocated memory
+            pthread_mutex_unlock(&memory_mutex); // Release lock after allocation
             return current->ptr;
         }
-
         current = current->next;
     }
 
-    // If no suitable block is found, return NULL (allocation failure)
+    pthread_mutex_unlock(&memory_mutex); // Release lock if no block is found
     return NULL;
 }
+
 
 // Frees a previously allocated block of memory
 // Parameters:
@@ -99,18 +101,19 @@ void mem_free(void* ptr) {
         return;
     }
 
-    // Find the block metadata corresponding to the pointer
+    pthread_mutex_lock(&memory_mutex); // Acquire lock
+
     Block* current = head_block;
     while (current != NULL) {
         if (current->ptr == ptr) {
             if (current->is_free) {
                 fprintf(stderr, "Warning: Attempted to free an already freed block at %p.\n", ptr);
+                pthread_mutex_unlock(&memory_mutex); // Release lock if already free
                 return;
             }
 
             current->is_free = 1;
 
-            // Coalesce adjacent free blocks to prevent fragmentation
             Block* next_block = current->next;
             while (next_block != NULL && next_block->is_free) {
                 current->size += next_block->size;
@@ -119,12 +122,13 @@ void mem_free(void* ptr) {
                 next_block = current->next;
             }
 
+            pthread_mutex_unlock(&memory_mutex); // Release lock after freeing
             return;
         }
-
         current = current->next;
     }
 
+    pthread_mutex_unlock(&memory_mutex); // Release lock if pointer not found
     fprintf(stderr, "Warning: Pointer %p not found in the memory pool.\n", ptr);
 }
 
@@ -135,35 +139,44 @@ void mem_free(void* ptr) {
 // Returns:
 // - A pointer to the resized memory block if successful, or NULL if resizing fails.
 void* mem_resize(void* ptr, size_t size) {
-    if (!ptr) return mem_alloc(size); // If ptr is NULL, just allocate new memory
+    pthread_mutex_lock(&memory_mutex); // Acquire lock
+
+    if (!ptr) {
+        void* new_ptr = mem_alloc(size); // Allocates new memory if ptr is NULL
+        pthread_mutex_unlock(&memory_mutex);
+        return new_ptr;
+    }
 
     Block* block = head_block;
     while (block != NULL) {
         if (block->ptr == ptr) {
             if (block->size >= size) {
-                // If the current block is already large enough, return the same pointer
+                pthread_mutex_unlock(&memory_mutex); // Release lock if size is sufficient
                 return ptr;
             } else {
-                // Allocate a new block and copy the old data to it
                 void* new_ptr = mem_alloc(size);
                 if (new_ptr) {
                     memcpy(new_ptr, ptr, block->size);
                     mem_free(ptr);
                 }
+                pthread_mutex_unlock(&memory_mutex); // Release lock after resizing
                 return new_ptr;
             }
         }
-
         block = block->next;
     }
 
+    pthread_mutex_unlock(&memory_mutex); // Release lock if pointer not found
     fprintf(stderr, "Warning: Pointer %p not found for resizing.\n", ptr);
-    return NULL;  // If the block was not found
+    return NULL;
 }
+
 
 // Deinitializes the memory pool and frees all associated resources
 // Frees the memory pool and all metadata structures, ensuring no memory leaks.
 void mem_deinit() {
+    pthread_mutex_lock(&memory_mutex); // Acquire lock if needed
+
     free(memory_pool);
     memory_pool = NULL;
 
@@ -176,4 +189,7 @@ void mem_deinit() {
 
     head_block = NULL;
     memory_pool_size = 0;
+
+    pthread_mutex_unlock(&memory_mutex); // Release lock
+    pthread_mutex_destroy(&memory_mutex); // Destroy mutex at the end
 }
