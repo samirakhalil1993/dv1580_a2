@@ -1,31 +1,50 @@
-# Compiler and flags
+# Compiler and Linking Variables
 CC = gcc
-CFLAGS = -Wall -Wextra -fPIC -pthread
-LDFLAGS = -L. -lm -lpthread
+CFLAGS = -Wall -fPIC -pthread -g
+LIB_NAME = libmemory_manager.so
+LDFLAGS = -L. -lmemory_manager -lm
 
-# Targets and file names
-MMANAGER_LIB = libmemory_manager.so
-MMANAGER_SRC = memory_manager.c
-MMANAGER_OBJ = memory_manager.o
+# Source and Object Files
+SRC = memory_manager.c
+OBJ = $(SRC:.c=.o)
 
-LIST_APP = list_app
-LIST_SRC = linked_list.c test_linked_list.c
-LIST_OBJ = linked_list.o test_linked_list.o
+# Default target
+all: mmanager list test_mmanager test_list
 
-# Default target to build both the library and the list application
-all: mmanager list
+# Rule to create the dynamic library
+$(LIB_NAME): $(OBJ)
+	$(CC) -shared -o $@ $(OBJ)
 
-# Build the memory manager as a shared library
-mmanager: $(MMANAGER_SRC)
-	$(CC) $(CFLAGS) -shared -o $(MMANAGER_LIB) $(MMANAGER_SRC)
+# Rule to compile source files into object files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Build the linked list application and link with the memory manager library
-list: $(LIST_SRC) $(MMANAGER_LIB)
-	$(CC) $(CFLAGS) -o $(LIST_APP) $(LIST_SRC) -lmemory_manager $(LDFLAGS)
+# Build the memory manager library
+mmanager: $(LIB_NAME)
 
-# Clean up object files, the dynamic library, and the list application
+# Build the linked list object file (dependency for test_list)
+linked_list.o: linked_list.c
+	$(CC) $(CFLAGS) -c linked_list.c -o linked_list.o
+
+# Build the test for the memory manager
+test_mmanager: $(LIB_NAME)
+	$(CC) $(CFLAGS) -o test_memory_manager test_memory_manager.c $(LDFLAGS)
+
+# Build the test for the linked list
+test_list: $(LIB_NAME) linked_list.o
+	$(CC) $(CFLAGS) -o test_linked_list linked_list.o test_linked_list.c $(LDFLAGS)
+
+# Run both test programs
+run_tests: run_test_mmanager run_test_list
+
+# Run the memory manager test cases with a default argument
+run_test_mmanager: test_mmanager
+	LD_LIBRARY_PATH=. ./test_memory_manager 0
+
+# Run the linked list test cases
+run_test_list: test_list
+	LD_LIBRARY_PATH=. ./test_linked_list 0
+
+# Clean up build files
 clean:
-	rm -f $(MMANAGER_OBJ) $(LIST_OBJ) $(MMANAGER_LIB) $(LIST_APP)
-
-# Phony targets to avoid conflicts with files named "all", "clean", etc.
-.PHONY: all clean mmanager list
+	rm -f $(OBJ) $(LIB_NAME) test_memory_manager test_linked_list linked_list.o
