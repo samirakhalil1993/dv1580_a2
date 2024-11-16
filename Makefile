@@ -1,8 +1,7 @@
 # Compiler and Linking Variables
 CC = gcc
-CFLAGS = -Wall -fPIC -pthread -g
+CFLAGS = -Wall -fPIC
 LIB_NAME = libmemory_manager.so
-LDFLAGS = -L. -lmemory_manager -lm
 
 # Source and Object Files
 SRC = memory_manager.c
@@ -19,32 +18,32 @@ $(LIB_NAME): $(OBJ)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Build the memory manager library
+# Build the memory manager
 mmanager: $(LIB_NAME)
 
-# Build the linked list object file (dependency for test_list)
-linked_list.o: linked_list.c
-	$(CC) $(CFLAGS) -c linked_list.c -o linked_list.o
+# Build the linked list
+list: linked_list.o
 
-# Build the test for the memory manager
+# Test target to run the memory manager test program
 test_mmanager: $(LIB_NAME)
-	$(CC) $(CFLAGS) -o test_memory_manager test_memory_manager.c $(LDFLAGS)
+	$(CC) -o test_memory_manager test_memory_manager.c -L. -lmemory_manager
 
-# Build the test for the linked list
+# Test target to run the linked list test program
 test_list: $(LIB_NAME) linked_list.o
-	$(CC) $(CFLAGS) -o test_linked_list linked_list.o test_linked_list.c $(LDFLAGS)
-
-# Run both test programs
+	$(CC) -o test_linked_list linked_list.c test_linked_list.c -L. -lmemory_manager
+	
+#run tests
 run_tests: run_test_mmanager run_test_list
-
-# Run the memory manager test cases with a default argument
+	
+# run test cases for the memory manager
 run_test_mmanager: test_mmanager
 	LD_LIBRARY_PATH=. ./test_memory_manager 0
 
-# Run the linked list test cases
+# run test cases for the linked list
 run_test_list: test_list
 	LD_LIBRARY_PATH=. ./test_linked_list 0
 
-# Clean up build files
+
+# Clean target to clean up build files
 clean:
 	rm -f $(OBJ) $(LIB_NAME) test_memory_manager test_linked_list linked_list.o
