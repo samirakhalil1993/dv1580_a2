@@ -7,7 +7,7 @@
 
 pthread_mutex_t memory_mutex;
 
-// Structure to represent a memory block in the pool.
+// Structure to represent a memory block in the pool
 typedef struct Block {
     size_t size;           // Size of the block
     int is_free;           // 1 if the block is free, 0 if it is allocated
